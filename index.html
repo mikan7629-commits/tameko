@@ -64,6 +64,10 @@
     <div style="font-size:12px; color:var(--color-text-secondary);">使わなかったお金は、稼いだお金。</div>
   </div>
 
+  <div id="backupReminder" style="display:none; background:var(--color-background-info); color:var(--color-text-info); border-radius:var(--border-radius-md); padding:10px 12px; margin-bottom:12px; font-size:13px;">
+    <i class="ti ti-alert-circle" style="vertical-align:-2px;" aria-hidden="true"></i> しばらくバックアップしていません。下の「バックアップを保存する」で記録を守りましょう。
+  </div>
+
   <div style="background:var(--color-background-primary); border:0.5px solid var(--color-border-tertiary); border-radius:var(--border-radius-lg); padding:1.25rem; text-align:center; margin-bottom:12px;">
     <div id="creature" style="color:#AED581; line-height:1; margin-bottom:6px;"><i class="ti ti-seeding" style="font-size:64px;" aria-hidden="true"></i></div>
     <div style="font-size:18px; font-weight:500;" id="stageName">たね</div>
@@ -148,10 +152,12 @@
 
   <div style="background:var(--color-background-primary); border:0.5px solid var(--color-border-secondary); border-radius:var(--border-radius-lg); padding:1rem;">
     <div style="font-size:13px; color:var(--color-text-secondary); margin-bottom:6px;"><i class="ti ti-device-floppy" style="vertical-align:-2px;" aria-hidden="true"></i> バックアップ（記録を守る）</div>
-    <textarea id="backupBox" rows="3" placeholder="「書き出す」を押すと、ここに記録データが出ます。コピーしてメモ等に保管してください。復元するときはここに貼って「復元する」。" style="width:100%; font-family:var(--font-mono); font-size:12px; resize:vertical;"></textarea>
+    <div style="font-size:12px; color:var(--color-text-tertiary); margin-bottom:8px;">記録はこの端末の中だけに保存されます。ときどき保存して、消えないようにしましょう。</div>
+    <button id="downloadBtn" style="width:100%; border:0.5px solid var(--color-border-secondary); background:var(--color-background-info); color:var(--color-text-info); font-weight:500; padding:10px; margin-bottom:8px;"><i class="ti ti-download" style="vertical-align:-2px;" aria-hidden="true"></i> バックアップを保存する（ファイル）</button>
+    <textarea id="backupBox" rows="3" placeholder="復元するときは、保存したファイルの中身（またはコピーした文字）をここに貼って「復元する」。" style="width:100%; font-family:var(--font-mono); font-size:12px; resize:vertical;"></textarea>
     <div style="display:flex; gap:8px; margin-top:8px;">
-      <button id="exportBtn" style="flex:1;"><i class="ti ti-upload" style="vertical-align:-2px;" aria-hidden="true"></i> 書き出す</button>
-      <button id="importBtn" style="flex:1;"><i class="ti ti-download" style="vertical-align:-2px;" aria-hidden="true"></i> 復元する</button>
+      <button id="copyBtn" style="flex:1;"><i class="ti ti-copy" style="vertical-align:-2px;" aria-hidden="true"></i> コピーで保存</button>
+      <button id="importBtn" style="flex:1;"><i class="ti ti-arrow-back-up" style="vertical-align:-2px;" aria-hidden="true"></i> 復元する</button>
     </div>
     <div id="backupMsg" style="font-size:12px; color:var(--color-text-tertiary); margin-top:8px; min-height:16px;"></div>
   </div>
@@ -201,6 +207,7 @@
     var into=s.total%STEP;
     document.getElementById('xpBar').style.width=Math.round(into/STEP*100)+'%';
     document.getElementById('xpRemain').textContent=(STEP-into).toLocaleString();
+    updateReminder();
 
     var mk=now().month;
     var months={};
@@ -270,12 +277,40 @@
   document.getElementById('resetBtn').addEventListener('click',function(){if(confirm('記録をすべて消しますか？（目標額は残ります）')){s.total=0;s.streak=0;s.lastDate=null;s.log=[];save();render();document.getElementById('cheer').textContent='';}});
 
   var msg=document.getElementById('backupMsg');
-  document.getElementById('exportBtn').addEventListener('click',function(){
-    var box=document.getElementById('backupBox');
-    box.value=JSON.stringify(s);
-    box.focus();box.select();
-    msg.textContent='書き出しました。このテキストをコピーして、メモやLINEのKeepなどに保管してください。';
+  function currentJSON(){return JSON.stringify(s);}
+  function markBacked(){s.lastBackup=now().full;save();updateReminder();}
+  function updateReminder(){
+    var el=document.getElementById('backupReminder');
+    if(!el)return;
+    var show=false;
+    if(s.log.length>0){ if(!s.lastBackup||daysBetween(s.lastBackup,now().full)>=7) show=true; }
+    el.style.display=show?'block':'none';
+  }
+  document.getElementById('downloadBtn').addEventListener('click',function(){
+    var data=currentJSON();
+    document.getElementById('backupBox').value=data;
+    try{
+      var blob=new Blob([data],{type:'application/json'});
+      var url=URL.createObjectURL(blob);
+      var a=document.createElement('a');
+      a.href=url; a.download='tameco-backup-'+now().full+'.json';
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      setTimeout(function(){URL.revokeObjectURL(url);},1500);
+      msg.textContent='バックアップを保存しました。「ファイル」アプリ等に残ります。うまくいかない時は下の「コピーで保存」を使ってください。';
+    }catch(e){
+      msg.textContent='この端末では保存が使えないようです。下の「コピーで保存」で文字を保管してください。';
+    }
     msg.style.color='var(--color-text-success)';
+    markBacked();
+  });
+  document.getElementById('copyBtn').addEventListener('click',function(){
+    var data=currentJSON();
+    var box=document.getElementById('backupBox');
+    box.value=data; box.focus(); box.select();
+    function done(){msg.textContent='コピーしました。メモやLINEのKeepに貼って保管してください。'; msg.style.color='var(--color-text-success)'; markBacked();}
+    function manual(){msg.textContent='下の枠の文字を長押し→「すべてを選択」→コピーして保管してください。'; msg.style.color='var(--color-text-success)'; markBacked();}
+    if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(data).then(done,manual);}
+    else{try{document.execCommand('copy');done();}catch(e){manual();}}
   });
   document.getElementById('importBtn').addEventListener('click',function(){
     var box=document.getElementById('backupBox');
